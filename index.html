@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Text Extractor</title>
+    <!-- pdf.js library from CDN -->
+    <script src="https://mozilla.github.io/pdf.js/build/pdf.mjs" type="module"></script>
+
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --secondary-color: #f5f5f5;
+            --border-color: #ccc;
+            --text-color: #333;
+            --error-color: #d9534f;
+            --success-color: #5cb85c;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+        }
+
+        .container {
+            display: flex;
+            flex-grow: 1;
+            gap: 20px;
+            flex-wrap: wrap; /* Allow wrapping on smaller screens */
+        }
+
+        .left-panel, .right-panel {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .left-panel {
+            flex: 1; /* Takes up more space initially */
+            min-width: 300px; /* Minimum width */
+        }
+
+        .right-panel {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        #drop-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            background-color: var(--secondary-color);
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+            margin-bottom: 20px;
+            min-height: 100px; /* Ensure it has some height */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        #drop-zone.dragover {
+            border-color: var(--primary-color);
+            background-color: #e8f0fe;
+        }
+
+        #pdf-preview {
+            margin-top: 15px;
+            border: 1px solid var(--border-color);
+            max-width: 100%;
+            height: auto; /* Adjust height automatically */
+            display: block; /* Prevents extra space below canvas */
+        }
+
+        .settings-section, .output-section {
+            margin-bottom: 20px;
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: var(--primary-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 5px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input[type="url"],
+        input[type="number"],
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        textarea {
+             resize: vertical;
+             min-height: 200px;
+             font-family: monospace; /* Good for code/text */
+        }
+
+        input[type="number"] {
+            max-width: 100px; /* Limit width of number inputs */
+            display: inline-block; /* Allow labels next to them */
+            margin-right: 10px;
+        }
+
+        .page-range label {
+             display: inline-block; /* Keep labels near inputs */
+             margin-right: 5px;
+        }
+
+        .checkbox-group label {
+            display: inline-block;
+            margin-left: 5px;
+            font-weight: normal;
+        }
+        .checkbox-group input[type="checkbox"] {
+             vertical-align: middle;
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.3s ease;
+            margin-right: 10px; /* Space between buttons */
+            margin-bottom: 10px; /* Space below buttons if they wrap */
+        }
+
+        button:hover {
+            background-color: #3a7bc8;
+        }
+        button:disabled {
+            background-color: #a0a0a0;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none; /* Hidden by default */
+            text-align: center;
+        }
+
+        #status.success {
+            background-color: #dff0d8;
+            color: var(--success-color);
+            border: 1px solid var(--success-color);
+            display: block;
+        }
+
+        #status.error {
+            background-color: #f2dede;
+            color: var(--error-color);
+            border: 1px solid var(--error-color);
+            display: block;
+        }
+         #status.info {
+            background-color: #d9edf7;
+            color: #31708f;
+            border: 1px solid #bce8f1;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>PDF Text Extractor</h1>
+
+    <div class="container">
+        <div class="left-panel">
+            <div id="drop-zone">
+                Drag & Drop PDF File Here
+                <br> or <br>
+                Use URL Input &rarr;
+            </div>
+             <canvas id="pdf-preview" style="display: none;"></canvas>
+        </div>
+
+        <div class="right-panel">
+            <div class="settings-section">
+                <h2>Settings</h2>
+                <label for="pdf-url">Load PDF from URL:</label>
+                <input type="url" id="pdf-url" placeholder="https://example.com/document.pdf">
+                <button id="load-url-btn">Load from URL</button>
+                <hr style="margin: 20px 0;">
+
+                <div class="page-range">
+                    <label for="start-page">From Page:</label>
+                    <input type="number" id="start-page" min="1" value="1" disabled>
+
+                    <label for="end-page">To Page:</label>
+                    <input type="number" id="end-page" min="1" value="1" disabled>
+                    <span id="total-pages"></span>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="include-page-numbers">
+                    <label for="include-page-numbers">Include Page Numbers (e.g., "(Page 1)")</label>
+                </div>
+
+                <button id="extract-btn" disabled>Extract Text</button>
+            </div>
+
+            <div class="output-section">
+                <h2>Extracted Text</h2>
+                 <textarea id="output-text" readonly placeholder="Extracted text will appear here..."></textarea>
+            </div>
+             <div id="status">Status messages will appear here</div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import pdf.js module
+        const { pdfjsLib } = globalThis;
+
+        // Specify workerSrc explicitly (important!)
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://mozilla.github.io/pdf.js/build/pdf.worker.mjs';
+
+        // DOM Elements
+        const dropZone = document.getElementById('drop-zone');
+        const pdfUrlInput = document.getElementById('pdf-url');
+        const loadUrlBtn = document.getElementById('load-url-btn');
+        const pdfPreview = document.getElementById('pdf-preview');
+        const startPageInput = document.getElementById('start-page');
+        const endPageInput = document.getElementById('end-page');
+        const totalPagesSpan = document.getElementById('total-pages');
+        const includePageNumbersCheckbox = document.getElementById('include-page-numbers');
+        const extractBtn = document.getElementById('extract-btn');
+        const outputText = document.getElementById('output-text');
+        const statusDiv = document.getElementById('status');
+
+        let currentPdfDoc = null;
+        let totalNumPages = 0;
+
+        // --- Status Update Function ---
+        function updateStatus(message, type = 'info') { // type can be 'info', 'success', 'error'
+            statusDiv.textContent = message;
+            statusDiv.className = type; // Resets classes and applies the new type
+             console.log(`${type.toUpperCase()}: ${message}`);
+        }
+
+        // --- Drag and Drop Event Handlers ---
+        dropZone.addEventListener('dragover', (event) => {
+            event.preventDefault(); // Prevent default browser behavior
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (event) => {
+            event.preventDefault();
+            dropZone.classList.remove('dragover');
+            updateStatus('Processing dropped file...', 'info');
+
+            const files = event.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                if (file.type === 'application/pdf') {
+                    pdfUrlInput.value = ''; // Clear URL input if file dropped
+                    loadFile(file);
+                } else {
+                    updateStatus('Error: Dropped file is not a PDF.', 'error');
+                }
+            }
+        });
+
+        // --- URL Loading ---
+        loadUrlBtn.addEventListener('click', () => {
+            const url = pdfUrlInput.value.trim();
+            if (url && url.toLowerCase().endsWith('.pdf')) {
+                 updateStatus(`Loading PDF from URL: ${url}`, 'info');
+                 loadUrl(url);
+            } else {
+                updateStatus('Error: Please enter a valid URL ending with .pdf', 'error');
+            }
+        });
+
+        // --- Load PDF File ---
+        function loadFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                loadPdfData(event.target.result, `file: ${file.name}`);
+            };
+            reader.onerror = function(event) {
+                 updateStatus('Error reading file: ' + reader.error, 'error');
+            };
+            reader.readAsArrayBuffer(file); // Read file as ArrayBuffer
+        }
+
+        // --- Load PDF URL ---
+        async function loadUrl(url) {
+             loadUrlBtn.disabled = true;
+             extractBtn.disabled = true;
+             try {
+                 // Fetch PDF data using fetch API
+                 const response = await fetch(url);
+                 if (!response.ok) {
+                     throw new Error(`HTTP error! status: ${response.status} - Check URL and CORS policy.`);
+                 }
+                 const pdfData = await response.arrayBuffer();
+                 loadPdfData(pdfData, `url: ${url}`);
+             } catch (error) {
+                 updateStatus(`Error loading PDF from URL: ${error.message}`, 'error');
+                 console.error("Fetch Error:", error);
+             } finally {
+                 loadUrlBtn.disabled = false;
+                 // Keep extractBtn disabled until PDF is fully processed by loadPdfData
+             }
+         }
+
+
+        // --- Process PDF Data (Common for File and URL) ---
+        async function loadPdfData(pdfData, sourceName) {
+            updateStatus(`Processing PDF: ${sourceName}`, 'info');
+            clearPreviousPdf(); // Clear old state
+
+            try {
+                // Use pdfData directly which is an ArrayBuffer
+                const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+                currentPdfDoc = await loadingTask.promise;
+                totalNumPages = currentPdfDoc.numPages;
+
+                updateStatus(`PDF loaded successfully: ${sourceName} (${totalNumPages} pages)`, 'success');
+
+                // Update UI elements
+                startPageInput.max = totalNumPages;
+                endPageInput.max = totalNumPages;
+                startPageInput.value = 1;
+                endPageInput.value = totalNumPages;
+                totalPagesSpan.textContent = `(Total: ${totalNumPages})`;
+
+                // Enable controls
+                startPageInput.disabled = false;
+                endPageInput.disabled = false;
+                extractBtn.disabled = false;
+
+                 // Render the first page as preview
+                 renderPage(1);
+
+            } catch (error) {
+                 currentPdfDoc = null; // Reset doc on error
+                 updateStatus(`Error processing PDF: ${error.message}`, 'error');
+                 console.error("PDF Loading Error:", error);
+                 clearPreviousPdf(); // Ensure UI is reset on error
+            }
+        }
+
+         // --- Render a single page onto the canvas ---
+         async function renderPage(pageNum) {
+             if (!currentPdfDoc || pageNum < 1 || pageNum > totalNumPages) {
+                 console.warn("Cannot render page: Invalid page number or no PDF loaded.");
+                 pdfPreview.style.display = 'none';
+                 return;
+             }
+
+             try {
+                 const page = await currentPdfDoc.getPage(pageNum);
+                 const scale = 1.5; // Adjust scale as needed
+                 const viewport = page.getViewport({ scale });
+
+                 const canvas = pdfPreview;
+                 const context = canvas.getContext('2d');
+                 canvas.height = viewport.height;
+                 canvas.width = viewport.width;
+                 canvas.style.display = 'block'; // Show canvas
+
+                 const renderContext = {
+                     canvasContext: context,
+                     viewport: viewport
+                 };
+                 await page.render(renderContext).promise;
+                 console.log(`Page ${pageNum} rendered`);
+
+             } catch (error) {
+                 updateStatus(`Error rendering page ${pageNum}: ${error.message}`, 'error');
+                 console.error(`Rendering error page ${pageNum}:`, error);
+                 pdfPreview.style.display = 'none'; // Hide canvas on error
+             }
+         }
+
+
+        // --- Clear Previous PDF State ---
+        function clearPreviousPdf() {
+            currentPdfDoc = null;
+            totalNumPages = 0;
+            startPageInput.disabled = true;
+            endPageInput.disabled = true;
+            extractBtn.disabled = true;
+            startPageInput.value = 1;
+            endPageInput.value = 1;
+            startPageInput.max = 1;
+            endPageInput.max = 1;
+            totalPagesSpan.textContent = '';
+            outputText.value = '';
+            pdfPreview.style.display = 'none'; // Hide canvas
+            const context = pdfPreview.getContext('2d');
+            context.clearRect(0, 0, pdfPreview.width, pdfPreview.height); // Clear canvas content
+            // Don't clear status immediately, let new operations update it
+        }
+
+        // --- Text Extraction Logic ---
+        extractBtn.addEventListener('click', async () => {
+            if (!currentPdfDoc) {
+                updateStatus('Error: No PDF loaded.', 'error');
+                return;
+            }
+
+            const startPage = parseInt(startPageInput.value, 10);
+            const endPage = parseInt(endPageInput.value, 10);
+            const includeNumbers = includePageNumbersCheckbox.checked;
+
+            // Validation
+            if (isNaN(startPage) || isNaN(endPage) || startPage < 1 || endPage > totalNumPages || startPage > endPage) {
+                updateStatus('Error: Invalid page range.', 'error');
+                return;
+            }
+
+            updateStatus(`Extracting text from page ${startPage} to ${endPage}...`, 'info');
+            extractBtn.disabled = true;
+            outputText.value = 'Extracting... Please wait.';
+
+            try {
+                let extractedText = '';
+                const pagePromises = [];
+
+                for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
+                    // Create a promise for each page's text content
+                     pagePromises.push(
+                         currentPdfDoc.getPage(pageNum).then(page => {
+                             return page.getTextContent().then(textContent => {
+                                 let pageText = '';
+                                 if (includeNumbers) {
+                                     pageText += `(Page ${pageNum})\n`;
+                                 }
+                                 // Join text items, handling potential line breaks within items is tricky,
+                                 // but basic join usually works well. A more sophisticated approach might
+                                 // analyze item positions (y-coordinates) for better line breaks.
+                                 pageText += textContent.items.map(item => item.str).join(' ');
+                                 return pageText;
+                             });
+                         })
+                     );
+                }
+
+                 // Wait for all page text extractions to complete
+                 const pagesTextArray = await Promise.all(pagePromises);
+
+                 // Join the text from all pages with double line breaks
+                 extractedText = pagesTextArray.join('\n\n');
+
+                outputText.value = extractedText;
+                updateStatus(`Text extracted successfully from ${endPage - startPage + 1} pages.`, 'success');
+
+            } catch (error) {
+                updateStatus(`Error during text extraction: ${error.message}`, 'error');
+                console.error("Extraction Error:", error);
+                outputText.value = 'Error during extraction.';
+            } finally {
+                extractBtn.disabled = false; // Re-enable button
+            }
+        });
+
+    </script>
+
+</body>
+</html>
