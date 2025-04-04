@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Text Extractor</title>
+    <title>PDF Text Extractor (Drag & Drop)</title>
     <!-- pdf.js library from CDN -->
     <script src="https://mozilla.github.io/pdf.js/build/pdf.mjs" type="module"></script>
 
@@ -15,6 +15,8 @@
             --text-color: #333;
             --error-color: #d9534f;
             --success-color: #5cb85c;
+            --button-secondary-bg: #6c757d;
+            --button-secondary-hover-bg: #5a6268;
         }
 
         body {
@@ -108,7 +110,6 @@
             font-weight: bold;
         }
 
-        input[type="url"],
         input[type="number"],
         textarea {
             width: 100%;
@@ -146,7 +147,6 @@
         }
 
         button {
-            background-color: var(--primary-color);
             color: white;
             padding: 12px 20px;
             border: none;
@@ -157,10 +157,19 @@
             margin-right: 10px; /* Space between buttons */
             margin-bottom: 10px; /* Space below buttons if they wrap */
         }
-
-        button:hover {
+        button#extract-btn {
+             background-color: var(--primary-color);
+        }
+        button#extract-btn:hover {
             background-color: #3a7bc8;
         }
+        button#copy-btn {
+            background-color: var(--button-secondary-bg);
+        }
+         button#copy-btn:hover {
+            background-color: var(--button-secondary-hover-bg);
+        }
+
         button:disabled {
             background-color: #a0a0a0;
             cursor: not-allowed;
@@ -193,18 +202,28 @@
             border: 1px solid #bce8f1;
             display: block;
         }
+
+        #output-info {
+            display: flex;
+            justify-content: space-between; /* Pushes Copy button right, word count left */
+            align-items: center;
+            margin-top: -10px; /* Pull up slightly below textarea */
+            margin-bottom: 10px;
+        }
+        #word-count {
+            font-size: 0.9em;
+            color: var(--text-color);
+        }
     </style>
 </head>
 <body>
 
-    <h1>PDF Text Extractor</h1>
+    <h1>PDF Text Extractor (Drag & Drop)</h1>
 
     <div class="container">
         <div class="left-panel">
             <div id="drop-zone">
                 Drag & Drop PDF File Here
-                <br> or <br>
-                Use URL Input &rarr;
             </div>
              <canvas id="pdf-preview" style="display: none;"></canvas>
         </div>
@@ -212,11 +231,7 @@
         <div class="right-panel">
             <div class="settings-section">
                 <h2>Settings</h2>
-                <label for="pdf-url">Load PDF from URL:</label>
-                <input type="url" id="pdf-url" placeholder="https://example.com/document.pdf">
-                <button id="load-url-btn">Load from URL</button>
-                <hr style="margin: 20px 0;">
-
+                <!-- Removed URL Input Section -->
                 <div class="page-range">
                     <label for="start-page">From Page:</label>
                     <input type="number" id="start-page" min="1" value="1" disabled>
@@ -236,7 +251,11 @@
 
             <div class="output-section">
                 <h2>Extracted Text</h2>
-                 <textarea id="output-text" readonly placeholder="Extracted text will appear here..."></textarea>
+                <textarea id="output-text" readonly placeholder="Extracted text will appear here..."></textarea>
+                <div id="output-info">
+                    <span id="word-count">Word Count: 0</span>
+                    <button id="copy-btn" disabled>Copy Text</button>
+                </div>
             </div>
              <div id="status">Status messages will appear here</div>
         </div>
@@ -251,8 +270,6 @@
 
         // DOM Elements
         const dropZone = document.getElementById('drop-zone');
-        const pdfUrlInput = document.getElementById('pdf-url');
-        const loadUrlBtn = document.getElementById('load-url-btn');
         const pdfPreview = document.getElementById('pdf-preview');
         const startPageInput = document.getElementById('start-page');
         const endPageInput = document.getElementById('end-page');
@@ -261,6 +278,8 @@
         const extractBtn = document.getElementById('extract-btn');
         const outputText = document.getElementById('output-text');
         const statusDiv = document.getElementById('status');
+        const copyBtn = document.getElementById('copy-btn'); // New button
+        const wordCountSpan = document.getElementById('word-count'); // New span
 
         let currentPdfDoc = null;
         let totalNumPages = 0;
@@ -268,13 +287,29 @@
         // --- Status Update Function ---
         function updateStatus(message, type = 'info') { // type can be 'info', 'success', 'error'
             statusDiv.textContent = message;
-            statusDiv.className = type; // Resets classes and applies the new type
-             console.log(`${type.toUpperCase()}: ${message}`);
+            statusDiv.className = type;
+            console.log(`${type.toUpperCase()}: ${message}`);
+        }
+
+        // --- Word Count Function ---
+        function countWords(text) {
+            if (!text || text.trim() === '') {
+                return 0;
+            }
+            // Split by whitespace (space, tab, newline etc.) and filter empty strings
+            const words = text.trim().split(/\s+/).filter(Boolean);
+            return words.length;
+        }
+
+        // --- Update Word Count Display ---
+        function updateWordCount() {
+             const words = countWords(outputText.value);
+             wordCountSpan.textContent = `Word Count: ${words}`;
         }
 
         // --- Drag and Drop Event Handlers ---
         dropZone.addEventListener('dragover', (event) => {
-            event.preventDefault(); // Prevent default browser behavior
+            event.preventDefault();
             dropZone.classList.add('dragover');
         });
 
@@ -291,22 +326,10 @@
             if (files.length > 0) {
                 const file = files[0];
                 if (file.type === 'application/pdf') {
-                    pdfUrlInput.value = ''; // Clear URL input if file dropped
                     loadFile(file);
                 } else {
                     updateStatus('Error: Dropped file is not a PDF.', 'error');
                 }
-            }
-        });
-
-        // --- URL Loading ---
-        loadUrlBtn.addEventListener('click', () => {
-            const url = pdfUrlInput.value.trim();
-            if (url && url.toLowerCase().endsWith('.pdf')) {
-                 updateStatus(`Loading PDF from URL: ${url}`, 'info');
-                 loadUrl(url);
-            } else {
-                updateStatus('Error: Please enter a valid URL ending with .pdf', 'error');
             }
         });
 
@@ -322,35 +345,12 @@
             reader.readAsArrayBuffer(file); // Read file as ArrayBuffer
         }
 
-        // --- Load PDF URL ---
-        async function loadUrl(url) {
-             loadUrlBtn.disabled = true;
-             extractBtn.disabled = true;
-             try {
-                 // Fetch PDF data using fetch API
-                 const response = await fetch(url);
-                 if (!response.ok) {
-                     throw new Error(`HTTP error! status: ${response.status} - Check URL and CORS policy.`);
-                 }
-                 const pdfData = await response.arrayBuffer();
-                 loadPdfData(pdfData, `url: ${url}`);
-             } catch (error) {
-                 updateStatus(`Error loading PDF from URL: ${error.message}`, 'error');
-                 console.error("Fetch Error:", error);
-             } finally {
-                 loadUrlBtn.disabled = false;
-                 // Keep extractBtn disabled until PDF is fully processed by loadPdfData
-             }
-         }
-
-
         // --- Process PDF Data (Common for File and URL) ---
         async function loadPdfData(pdfData, sourceName) {
             updateStatus(`Processing PDF: ${sourceName}`, 'info');
             clearPreviousPdf(); // Clear old state
 
             try {
-                // Use pdfData directly which is an ArrayBuffer
                 const loadingTask = pdfjsLib.getDocument({ data: pdfData });
                 currentPdfDoc = await loadingTask.promise;
                 totalNumPages = currentPdfDoc.numPages;
@@ -368,9 +368,10 @@
                 startPageInput.disabled = false;
                 endPageInput.disabled = false;
                 extractBtn.disabled = false;
+                copyBtn.disabled = true; // Keep copy disabled until extraction
 
-                 // Render the first page as preview
-                 renderPage(1);
+                // Render the first page as preview
+                renderPage(1);
 
             } catch (error) {
                  currentPdfDoc = null; // Reset doc on error
@@ -421,12 +422,14 @@
             startPageInput.disabled = true;
             endPageInput.disabled = true;
             extractBtn.disabled = true;
+            copyBtn.disabled = true; // Disable copy button
             startPageInput.value = 1;
             endPageInput.value = 1;
             startPageInput.max = 1;
             endPageInput.max = 1;
             totalPagesSpan.textContent = '';
             outputText.value = '';
+            updateWordCount(); // Reset word count display
             pdfPreview.style.display = 'none'; // Hide canvas
             const context = pdfPreview.getContext('2d');
             context.clearRect(0, 0, pdfPreview.width, pdfPreview.height); // Clear canvas content
@@ -452,14 +455,15 @@
 
             updateStatus(`Extracting text from page ${startPage} to ${endPage}...`, 'info');
             extractBtn.disabled = true;
+            copyBtn.disabled = true; // Disable copy during extraction
             outputText.value = 'Extracting... Please wait.';
+            updateWordCount(); // Reset word count display
 
             try {
                 let extractedText = '';
                 const pagePromises = [];
 
                 for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
-                    // Create a promise for each page's text content
                      pagePromises.push(
                          currentPdfDoc.getPage(pageNum).then(page => {
                              return page.getTextContent().then(textContent => {
@@ -467,9 +471,6 @@
                                  if (includeNumbers) {
                                      pageText += `(Page ${pageNum})\n`;
                                  }
-                                 // Join text items, handling potential line breaks within items is tricky,
-                                 // but basic join usually works well. A more sophisticated approach might
-                                 // analyze item positions (y-coordinates) for better line breaks.
                                  pageText += textContent.items.map(item => item.str).join(' ');
                                  return pageText;
                              });
@@ -477,21 +478,52 @@
                      );
                 }
 
-                 // Wait for all page text extractions to complete
                  const pagesTextArray = await Promise.all(pagePromises);
-
-                 // Join the text from all pages with double line breaks
                  extractedText = pagesTextArray.join('\n\n');
 
                 outputText.value = extractedText;
+                updateWordCount(); // Update word count after extraction
                 updateStatus(`Text extracted successfully from ${endPage - startPage + 1} pages.`, 'success');
+                copyBtn.disabled = false; // Enable copy button after successful extraction
+                copyBtn.textContent = 'Copy Text'; // Reset copy button text if it was changed
 
             } catch (error) {
                 updateStatus(`Error during text extraction: ${error.message}`, 'error');
                 console.error("Extraction Error:", error);
                 outputText.value = 'Error during extraction.';
+                updateWordCount(); // Update word count (likely 0 or low)
+                copyBtn.disabled = true; // Keep copy disabled on error
             } finally {
-                extractBtn.disabled = false; // Re-enable button
+                extractBtn.disabled = false; // Re-enable extract button
+            }
+        });
+
+        // --- Copy Button Logic ---
+        copyBtn.addEventListener('click', () => {
+            const textToCopy = outputText.value;
+            if (textToCopy && navigator.clipboard) {
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    // Success feedback
+                    updateStatus('Text copied to clipboard!', 'success');
+                    copyBtn.textContent = 'Copied!';
+                    // Optional: Change back after a delay
+                    setTimeout(() => {
+                       copyBtn.textContent = 'Copy Text';
+                       // Clear success status after a bit longer if desired
+                       // if (statusDiv.classList.contains('success') && statusDiv.textContent.includes('copied')) {
+                       //     statusDiv.className = ''; statusDiv.textContent = '';
+                       // }
+                    }, 2000); // Revert text after 2 seconds
+                }).catch(err => {
+                    // Error feedback
+                    updateStatus('Error: Could not copy text to clipboard.', 'error');
+                    console.error('Clipboard write failed: ', err);
+                     // Alert as fallback for older browsers or specific issues
+                     alert('Failed to copy text. Please select and copy manually.');
+                });
+            } else if (!navigator.clipboard) {
+                 updateStatus('Error: Clipboard API not available in this browser.', 'error');
+                 alert('Clipboard copying not supported by your browser. Please select and copy manually.');
             }
         });
 
